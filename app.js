@@ -1,7 +1,7 @@
 // MSAL configuration for user authentication
 const msalConfig = {
   auth: {
-    clientId: "6e6367b1-e7e3-4c0a-9978-6e1b3db188b7", // ← Serve SEMPRE!
+    clientId: "167a1b7b-50ed-4a39-bd23-f93110dcdcf3", // ← Serve SEMPRE!
     authority: "https://login.microsoftonline.com/common",  // Multi-tenant authority
     redirectUri: window.location.href, // URL to redirect after login
   },

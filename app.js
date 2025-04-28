@@ -1,149 +1,151 @@
-// MSAL configuration for user authentication
+// MSAL configuration
 const msalConfig = {
   auth: {
-    clientId: "", 
-    authority: "https://login.microsoftonline.com/common",  // Multi-tenant authority
-    redirectUri: window.location.href, // URL to redirect after login
+    clientId: "YOUR_CLIENT_ID", // ← Replace
+    authority: "https://login.microsoftonline.com/YOUR_TENANT_ID", // Or "common"
+    redirectUri: window.location.href
   },
   cache: {
-    cacheLocation: "sessionStorage", // Store session data in the browser
-    storeAuthStateInCookie: true, // Store state in cookies if needed
-  },
+    cacheLocation: "sessionStorage",
+    storeAuthStateInCookie: false
+  }
 };
 
 const msalInstance = new msal.PublicClientApplication(msalConfig);
-
 let token = null;
 
-// Function to get the access token from the logged-in user
 async function getAccessToken() {
-  try {
-    const accounts = msalInstance.getAllAccounts();
-    if (accounts.length === 0) {
-      throw new Error("No account found");
-    }
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length === 0) return null;
 
-    const request = {
+  try {
+    const response = await msalInstance.acquireTokenSilent({
       account: accounts[0],
-      scopes: ["https://graph.microsoft.com/.default"], // Scope for SharePoint access
-    };
-
-    const response = await msalInstance.acquireTokenSilent(request);
+      scopes: ["https://graph.microsoft.com/.default"]
+    });
     return response.accessToken;
-  } catch (error) {
-    console.error("Error fetching token:", error);
-    return null;
+  } catch {
+    const response = await msalInstance.acquireTokenPopup({
+      scopes: ["https://graph.microsoft.com/.default"]
+    });
+    return response.accessToken;
   }
 }
 
-// Function to get SharePoint sites the user has access to
+function graphClient(token) {
+  return MicrosoftGraph.Client.init({
+    authProvider: (done) => done(null, token)
+  });
+}
+
 async function getSharePointSites(token) {
-  const client = MicrosoftGraph.Client.init({
-    authProvider: (done) => {
-      done(null, token); // Provide the access token
-    },
-  });
-
   try {
-    const response = await client.api("/me/sites").get(); // Get SharePoint sites
-    return response.value; // Return the list of SharePoint sites
-  } catch (error) {
-    console.error("Error fetching SharePoint sites:", error);
+    const client = graphClient(token);
+    const response = await client.api("/sites?search=*").get();
+    return response.value;
+  } catch (e) {
+    console.error("Sites error", e);
     return [];
   }
 }
 
-// Function to get lists from a specific SharePoint site
 async function getSharePointLists(token, siteId) {
-  const client = MicrosoftGraph.Client.init({
-    authProvider: (done) => {
-      done(null, token); // Provide the access token
-    },
-  });
-
   try {
-    const response = await client.api(`/sites/${siteId}/lists`).get(); // Get lists from a specific site
-    return response.value; // Return the list of lists
-  } catch (error) {
-    console.error("Error fetching SharePoint lists:", error);
+    const client = graphClient(token);
+    const response = await client.api(`/sites/${siteId}/lists`).get();
+    return response.value;
+  } catch (e) {
+    console.error("Lists error", e);
     return [];
   }
 }
 
-// Function to get items from a SharePoint list
 async function getListItems(token, siteId, listId) {
-  const client = MicrosoftGraph.Client.init({
-    authProvider: (done) => {
-      done(null, token); // Provide the access token
-    },
-  });
-
   try {
-    const response = await client.api(`/sites/${siteId}/lists/${listId}/items`).get(); // Get list items
-    return response.value; // Return the list items
-  } catch (error) {
-    console.error("Error fetching list items:", error);
+    const client = graphClient(token);
+    const response = await client.api(`/sites/${siteId}/lists/${listId}/items?expand=fields`).get();
+    return response.value;
+  } catch (e) {
+    console.error("Items error", e);
     return [];
   }
 }
 
-// Function to handle user queries and fetch answers from SharePoint
+async function callLLM(question, items) {
+  const context = items.map(i => `• ${i.fields?.Title || "No Title"}: ${i.fields?.Description || "No Description"}`).join('\n');
+
+  const prompt = `
+Answer this question using the following SharePoint data.
+
+Question: "${question}"
+
+Context:
+${context}
+
+Answer:
+  `;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer YOUR_OPENAI_API_KEY"
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 300
+      })
+    });
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "No answer generated.";
+  } catch (error) {
+    console.error("LLM error:", error);
+    return "Error processing your question.";
+  }
+}
+
 async function handleUserQuery(query) {
-  const answerElement = document.getElementById('answer');
+  const answerEl = document.getElementById("answer");
+  answerEl.innerHTML = "Thinking...";
 
-  // Get the access token
   token = await getAccessToken();
-  if (!token) {
-    answerElement.innerHTML = "Error retrieving token.";
-    return;
-  }
+  if (!token) return (answerEl.innerHTML = "Authentication failed.");
 
-  // Fetch SharePoint sites
   const sites = await getSharePointSites(token);
-  if (sites.length === 0) {
-    answerElement.innerHTML = "No SharePoint sites found.";
-    return;
-  }
+  if (!sites.length) return (answerEl.innerHTML = "No SharePoint sites found.");
 
-  // Fetch lists from the first site
   const siteId = sites[0].id;
   const lists = await getSharePointLists(token, siteId);
-  if (lists.length === 0) {
-    answerElement.innerHTML = "No SharePoint lists found.";
-    return;
-  }
+  if (!lists.length) return (answerEl.innerHTML = "No lists found.");
 
-  // Fetch list items from the first list
   const listId = lists[0].id;
   const items = await getListItems(token, siteId, listId);
-  if (items.length === 0) {
-    answerElement.innerHTML = "No items found in the list.";
-    return;
-  }
+  if (!items.length) return (answerEl.innerHTML = "No items found.");
 
-  // Search for an answer from the list items (for example, by title)
-  const answer = items.find(item => item.fields.Title.includes(query));
-  if (answer) {
-    answerElement.innerHTML = `Answer found: ${answer.fields.Description}`;
-  } else {
-    answerElement.innerHTML = "No answer found.";
-  }
+  const answer = await callLLM(query, items);
+  answerEl.innerHTML = answer;
 }
 
-// Event listener for login button to trigger MSAL login
-document.getElementById('login-button').addEventListener('click', () => {
-  msalInstance.loginPopup().then(() => {
-    document.getElementById('login-section').style.display = 'none';
-    document.getElementById('question-section').style.display = 'block';
-  });
+// UI Events
+document.getElementById("login-button").addEventListener("click", async () => {
+  try {
+    await msalInstance.loginPopup({ scopes: ["User.Read"] });
+    document.getElementById("login-section").style.display = "none";
+    document.getElementById("question-section").style.display = "block";
+  } catch (e) {
+    console.error("Login failed", e);
+  }
 });
 
-// Event listener for asking a question
-document.getElementById('ask-button').addEventListener('click', () => {
-  const query = document.getElementById('question').value;
-  if (query) {
-    handleUserQuery(query);
-  } else {
-    document.getElementById('answer').innerHTML = "Please enter a question.";
+document.getElementById("ask-button").addEventListener("click", () => {
+  const query = document.getElementById("question").value;
+  if (!query) {
+    document.getElementById("answer").innerHTML = "Please enter a question.";
+    return;
   }
+  handleUserQuery(query);
 });

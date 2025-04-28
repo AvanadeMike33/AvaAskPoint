@@ -1,7 +1,7 @@
 // MSAL configuration
 const msalConfig = {
   auth: {
-    clientId: "YOUR_CLIENT_ID", // ← Replace
+    clientId: "YOUR_CLIENT_ID", 
     authority: "https://login.microsoftonline.com/YOUR_TENANT_ID", // Or "common"
     redirectUri: window.location.href
   },

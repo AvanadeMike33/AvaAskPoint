@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SharePoint Q&A App</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- MSAL.js library for authentication -->
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.0.0-beta.2/dist/msal-browser.min.js"></script>
+  <!-- Microsoft Graph Client library for API calls -->
+  <script src="https://cdn.jsdelivr.net/npm/@microsoft/microsoft-graph-client@3.0.0/dist/microsoft-graph-client.min.js"></script>
+  <!-- LangChainJS for NLP processing -->
+  <script src="https://cdn.jsdelivr.net/npm/langchain@latest"></script>
+</head>
+<body>
+  <h1>SharePoint Q&A</h1>
+  <!-- Login button section -->
+  <div id="login-section">
+    <button id="login-button">Login</button>
+  </div>
+  <!-- Question input section (hidden initially) -->
+  <div id="question-section" style="display: none;">
+    <input type="text" id="question" placeholder="Ask a question" />
+    <button id="ask-button">Ask</button>
+    <p id="answer"></p>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
